@@ -5,10 +5,11 @@ import os
 
 from langgraph.graph import StateGraph
 from langgraph.graph import START, END
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.message import add_messages
+import sqlite3
 
 
 load_dotenv()
@@ -35,8 +36,10 @@ def chat_node(state: ChatState):
     response = llm.invoke(messages)
     return {"messages" : [response]}
 
+
+conn = sqlite3.connect(database='chatbot.db', check_same_thread=False)
 #Checkpointer
-checkpointer = InMemorySaver()
+checkpointer = SqliteSaver(conn=conn)
 
 graph = StateGraph(ChatState)
 graph.add_node("chat_node", chat_node)
@@ -45,19 +48,9 @@ graph.add_edge("chat_node", END)
 
 chatbot = graph.compile(checkpointer=checkpointer)
 
-# CONFIG = {'configurable': {'thread_id': 'thread-1'}}
+def retrieve_all_threads(): 
+    all_threads = set()
+    for checkpoint in checkpointer.list(None):
+        all_threads.add(checkpoint.config['configurable']['thread_id'])
 
-# response = chatbot.invoke(
-#                 {'messages': [HumanMessage(content='Hi my name is Pallavi')]},
-#                 config= CONFIG
-#             )
-# print(chatbot.get_state(config=CONFIG).values)
-
-
-# for message_chunk, metadata in chatbot.stream(
-#     {'messages' : [HumanMessage(content='What is the recipe to make pasta')]},
-#     config = {'configurable' : {'thread_id' : 'thread-1'}},
-#     stream_mode = 'messages'
-# ):
-#     if message_chunk.content:
-#         print(message_chunk.content, end= " ", flush=True)
+    return list(all_threads)
